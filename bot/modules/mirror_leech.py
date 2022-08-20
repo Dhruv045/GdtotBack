@@ -6,7 +6,7 @@ from telegram.ext import CommandHandler
 
 from bot import *
 from bot.helper.ext_utils.shortenurl import short_url
-from bot.helper.ext_utils.bot_utils import is_url, is_magnet, is_mega_link, is_gdrive_link, get_content_type, is_gdrive_link
+from bot.helper.ext_utils.bot_utils import is_url, is_magnet, is_mega_link, is_gdrive_link, get_content_type, is_gdrive_link, is_gdtot_link
 from bot.helper.ext_utils.exceptions import DirectDownloadLinkException
 from bot.helper.mirror_utils.download_utils.aria2_download import add_aria2c_download
 from bot.helper.mirror_utils.download_utils.gd_downloader import add_gd_download
