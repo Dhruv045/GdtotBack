@@ -4,8 +4,9 @@ from time import sleep
 from threading import Thread
 from telegram.ext import CommandHandler
 
-from bot import dispatcher, DOWNLOAD_DIR, LOGGER, MEGA_KEY
-from bot.helper.ext_utils.bot_utils import is_url, is_magnet, is_mega_link, is_gdrive_link, get_content_type
+from bot import *
+from bot.helper.ext_utils.shortenurl import short_url
+from bot.helper.ext_utils.bot_utils import is_url, is_magnet, is_mega_link, is_gdrive_link, get_content_type, is_gdrive_link
 from bot.helper.ext_utils.exceptions import DirectDownloadLinkException
 from bot.helper.mirror_utils.download_utils.aria2_download import add_aria2c_download
 from bot.helper.mirror_utils.download_utils.gd_downloader import add_gd_download
@@ -24,6 +25,7 @@ def _mirror_leech(bot, message, isZip=False, extract=False, isQbit=False, isLeec
     message_args = mesg[0].split(maxsplit=1)
     name_args = mesg[0].split('|', maxsplit=1)
     index = 1
+    is_gdtot = False
     ratio = None
     seed_time = None
     select = False
@@ -147,6 +149,7 @@ def _mirror_leech(bot, message, isZip=False, extract=False, isQbit=False, isLeec
         content_type = get_content_type(link)
         if content_type is None or re_match(r'text/html|text/plain', content_type):
             try:
+                is_gdtot = is_gdtot_link(link)
                 link = direct_link_generator(link)
                 LOGGER.info(f"Generated link: {link}")
             except DirectDownloadLinkException as e:
@@ -163,7 +166,7 @@ def _mirror_leech(bot, message, isZip=False, extract=False, isQbit=False, isLeec
             gmsg += f"Use /{BotCommands.UnzipMirrorCommand[0]} to extracts Google Drive archive folder/file"
             sendMessage(gmsg, bot, message)
         else:
-            Thread(target=add_gd_download, args=(link, f'{DOWNLOAD_DIR}{listener.uid}', listener, name)).start()
+            Thread(target=add_gd_download, args=(link, f'{DOWNLOAD_DIR}{listener.uid}', listener, is_gdtot , name)).start()
     elif is_mega_link(link):
         if MEGA_KEY is not None:
             Thread(target=MegaDownloader(listener).add_download, args=(link, f'{DOWNLOAD_DIR}{listener.uid}/')).start()
