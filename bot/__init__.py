@@ -355,7 +355,12 @@ try:
     RSS_DELAY = int(RSS_DELAY)
 except:
     RSS_DELAY = 900
-    
+try:
+    CRYPT = getConfig('CRYPT')
+    if len(CRYPT) == 0:
+        raise KeyError
+except:
+    CRYPT = None  
 try:
     BUTTON_FOUR_NAME = getConfig('BUTTON_FOUR_NAME')
     BUTTON_FOUR_URL = getConfig('BUTTON_FOUR_URL')
