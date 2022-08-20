@@ -14,6 +14,7 @@ from bot.helper.ext_utils.exceptions import DirectDownloadLinkException
 from bot.helper.ext_utils.bot_utils import *
 from telegram import InlineKeyboardMarkup, ParseMode
 from bot.helper.telegram_helper.button_build import ButtonMaker
+from bot.helper.mirror_utils.download_utils.direct_link_generator import gdtot
 
 
 def _clone(message, bot):
@@ -100,8 +101,10 @@ def _clone(message, bot):
         else:
             sendMarkup(result + cc, bot, message, button)
             LOGGER.info(f'Cloning Done: {name}')
+        if is_gdtot:
+            gd.deletefile(link)
     else:
-        sendMessage("Send Gdrive link along with command or by replying to the link by command\n\n<b>Multi links only by replying to first link/file:</b>\n<code>/cmd</code> 10(number of links/files)", bot, message)
+        sendMessage('Send Gdrive or gdtot link along with command or by replying to the link by command', bot, message)
 
 @new_thread
 def cloneNode(update, context):
