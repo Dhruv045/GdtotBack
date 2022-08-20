@@ -1,11 +1,12 @@
 from time import sleep, time
 
-from bot import download_dict, download_dict_lock, BASE_URL, get_client, STOP_DUPLICATE, TORRENT_TIMEOUT, LOGGER
+from bot import download_dict, download_dict_lock, BASE_URL, get_client, TORRENT_DIRECT_LIMIT, ZIP_UNZIP_LIMIT, STOP_DUPLICATE, TORRENT_TIMEOUT, LOGGER, STORAGE_THRESHOLD
 from bot.helper.mirror_utils.status_utils.qbit_download_status import QbDownloadStatus
 from bot.helper.mirror_utils.upload_utils.gdriveTools import GoogleDriveHelper
 from bot.helper.telegram_helper.message_utils import sendMessage, sendMarkup, deleteMessage, sendStatusMessage, update_all_messages, sendFile
 from bot.helper.ext_utils.bot_utils import get_readable_time, setInterval, bt_selection_buttons
-from bot.helper.ext_utils.fs_utils import clean_unwanted, get_base_name
+from bot.helper.ext_utils.fs_utils import clean_unwanted, get_base_name, check_storage_threshold
+from bot.helper.telegram_helper import button_build
 
 
 class QbDownloader:
@@ -20,6 +21,7 @@ class QbDownloader:
         self.__name = ''
         self.__stalled_time = time()
         self.__uploaded = False
+        self.__sizeChecked = False
         self.__rechecked = False
         self.__stopDup_check = False
         self.__select = False
@@ -113,6 +115,29 @@ class QbDownloader:
                             cap = f"Here are the search results:\n\n{cap}"
                             sendFile(self.__listener.bot, self.__listener.message, f_name, cap)
                     self.__stopDup_check = True
+                if not self.__sizeChecked:
+                    size = tor_info.size
+                    arch = any([self.__listener.isZip, self.__listener.extract])
+                    if STORAGE_THRESHOLD is not None:
+                        acpt = check_storage_threshold(size, arch)
+                        if not acpt:
+                            msg = f'You must leave {STORAGE_THRESHOLD}GB free storage.'
+                            msg += f'\nYour File/Folder size is {get_readable_file_size(size)}'
+                            self.__onDownloadError(msg)
+                            return
+                    limit = None
+                    if ZIP_UNZIP_LIMIT is not None and arch:
+                        mssg = f'Zip/Unzip limit is {ZIP_UNZIP_LIMIT}GB'
+                        limit = ZIP_UNZIP_LIMIT
+                    elif TORRENT_DIRECT_LIMIT is not None:
+                        mssg = f'Torrent limit is {TORRENT_DIRECT_LIMIT}GB'
+                        limit = TORRENT_DIRECT_LIMIT
+                    if limit is not None:
+                        LOGGER.info('Checking File/Folder Size...')
+                        if size > limit * 1024**3:
+                            fmsg = f"{mssg}.\nYour File/Folder size is {get_readable_file_size(size)}"
+                            self.__onDownloadError(fmsg)
+                    self.__sizeChecked = True
             elif tor_info.state == "stalledDL":
                 if not self.__rechecked and 0.99989999999999999 < tor_info.progress < 1:
                     msg = f"Force recheck - Name: {self.__name} Hash: "
