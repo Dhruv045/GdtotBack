@@ -1,9 +1,9 @@
 from time import sleep, time
 from os import remove, path as ospath
 
-from bot import aria2, download_dict_lock, download_dict, STOP_DUPLICATE, BASE_URL, LOGGER
+from bot import aria2, download_dict_lock, download_dict, STOP_DUPLICATE, BASE_URL, TORRENT_DIRECT_LIMIT, ZIP_UNZIP_LIMIT, LOGGER, STORAGE_THRESHOLD
 from bot.helper.mirror_utils.upload_utils.gdriveTools import GoogleDriveHelper
-from bot.helper.ext_utils.bot_utils import is_magnet, getDownloadByGid, new_thread, bt_selection_buttons
+from bot.helper.ext_utils.bot_utils import is_magnet, getDownloadByGid, new_thread, bt_selection_buttons, get_readable_file_size
 from bot.helper.mirror_utils.status_utils.aria_download_status import AriaDownloadStatus
 from bot.helper.telegram_helper.message_utils import sendMarkup, sendStatusMessage, sendMessage, deleteMessage, update_all_messages, sendFile
 from bot.helper.ext_utils.fs_utils import get_base_name, clean_unwanted
@@ -11,53 +11,61 @@ from bot.helper.ext_utils.fs_utils import get_base_name, clean_unwanted
 
 @new_thread
 def __onDownloadStarted(api, gid):
-    download = api.get_download(gid)
-    if download.is_metadata:
-        LOGGER.info(f'onDownloadStarted: {gid} METADATA')
-        sleep(1)
-        if dl := getDownloadByGid(gid):
-            listener = dl.listener()
-            if listener.select:
-                metamsg = "Downloading Metadata, wait then you can select files. Use torrent file to avoid this wait."
-                meta = sendMessage(metamsg, listener.bot, listener.message)
-                while True:
-                    if download.is_removed or download.followed_by_ids:
-                        deleteMessage(listener.bot, meta)
-                        break
-                    download = download.live
-        return
-    else:
-        LOGGER.info(f'onDownloadStarted: {download.name} - Gid: {gid}')
     try:
-        if STOP_DUPLICATE:
-            sleep(1)
-            if dl := getDownloadByGid(gid):
-                listener = dl.listener()
-                if listener.isLeech or listener.select:
-                    return
+        if any([STOP_DUPLICATE, TORRENT_DIRECT_LIMIT, ZIP_UNZIP_LIMIT, STORAGE_THRESHOLD]):
+            download = api.get_download(gid)
+            if download.is_metadata:
+                LOGGER.info(f'onDownloadStarted: {gid} Metadata')
+                return
+            elif not download.is_torrent:
+                sleep(3)
                 download = api.get_download(gid)
-                if not download.is_torrent:
-                    sleep(3)
-                    download = download.live
+            LOGGER.info(f'onDownloadStarted: {gid}')
+            dl = getDownloadByGid(gid)
+            if not dl or dl.getListener().isLeech:
+                return
+            if STOP_DUPLICATE and not dl.getListener().isLeech:
                 LOGGER.info('Checking File/Folder if already in Drive...')
                 sname = download.name
-                if listener.isZip:
-                    sname = f"{sname}.zip"
-                elif listener.extract:
+                if dl.getListener().isZip:
+                    sname = sname + ".zip"
+                elif dl.getListener().extract:
                     try:
                         sname = get_base_name(sname)
                     except:
                         sname = None
                 if sname is not None:
-                    cap, f_name = GoogleDriveHelper().drive_list(sname, True)
-                    if cap:
-                        listener.onDownloadError('File/Folder already available in Drive.')
+                    smsg, button = GoogleDriveHelper().drive_list(sname, True)
+                    if smsg:
+                        dl.getListener().onDownloadError('File/Folder already available in Drive.\n\n')
                         api.remove([download], force=True, files=True)
-                        cap = f"Here are the search results:\n\n{cap}"
-                        sendFile(listener.bot, listener.message, f_name, cap)
-                        return
+                        return sendMarkup("Here are the search results:", dl.getListener().bot, dl.getListener().message, button)
+            if any([ZIP_UNZIP_LIMIT, TORRENT_DIRECT_LIMIT, STORAGE_THRESHOLD]):
+                sleep(1)
+                limit = None
+                size = download.total_length
+                arch = any([dl.getListener().isZip, dl.getListener().extract])
+                if STORAGE_THRESHOLD is not None:
+                    acpt = check_storage_threshold(size, arch, True)
+                    # True if files allocated, if allocation disabled remove True arg
+                    if not acpt:
+                        msg = f'You must leave {STORAGE_THRESHOLD}GB free storage.'
+                        msg += f'\nYour File/Folder size is {get_readable_file_size(size)}'
+                        dl.getListener().onDownloadError(msg)
+                        return api.remove([download], force=True, files=True)
+                if ZIP_UNZIP_LIMIT is not None and arch:
+                    mssg = f'Zip/Unzip limit is {ZIP_UNZIP_LIMIT}GB'
+                    limit = ZIP_UNZIP_LIMIT
+                elif TORRENT_DIRECT_LIMIT is not None:
+                    mssg = f'Torrent/Direct limit is {TORRENT_DIRECT_LIMIT}GB'
+                    limit = TORRENT_DIRECT_LIMIT
+                if limit is not None:
+                    LOGGER.info('Checking File/Folder Size...')
+                    if size > limit * 1024**3:
+                        dl.getListener().onDownloadError(f'{mssg}.\nYour File/Folder size is {get_readable_file_size(size)}')
+                        return api.remove([download], force=True, files=True)
     except Exception as e:
-        LOGGER.error(f"{e} onDownloadStart: {gid} check duplicate didn't pass")
+        LOGGER.error(f"{e} onDownloadStart: {gid} stop duplicate and size check didn't pass")
 
 @new_thread
 def __onDownloadComplete(api, gid):
